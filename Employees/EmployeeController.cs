@@ -209,45 +209,106 @@ private void Update()
         agent.speed = walkSpeed; // Reset to walk speed
     }
 
-    public void StartNextTask()
+public void StartNextTask()
 {
     if (data.assignedTaskSequence == null || data.assignedTaskSequence.Count == 0)
         return;
         
     if (isConvinced)
-        return; // Convinced employees stop working
+        return;
     
     if (currentTaskIndex >= data.assignedTaskSequence.Count)
     {
-        // Loop back to start or stop
-        currentTaskIndex = 0; // Or just return to stop
+        currentTaskIndex = 0;
     }
     
     currentTask = data.assignedTaskSequence[currentTaskIndex];
     currentTaskIndex++;
     
-    // Go to task location and execute
-    GoToLocation(currentTask.taskLocation);
-    actionQueue.Enqueue(PerformTaskRoutine(currentTask));
+    // Execute action sequence
+    StartCoroutine(ExecuteTaskActionSequence(currentTask));
 }
 
-private IEnumerator PerformTaskRoutine(TaskData task)
+
+private IEnumerator ExecuteTaskActionSequence(TaskData task)
 {
-    agent.isStopped = true;
-    animator.SetTrigger("Trigger_Work");
+    isBusy = true;
     
-    yield return new WaitForSeconds(task.duration);
+    // Execute each action in sequence
+    if (task.actionSequence != null && task.actionSequence.Count > 0)
+    {
+        foreach (EmployeeAction action in task.actionSequence)
+        {
+            yield return StartCoroutine(ExecuteAction(action));
+        }
+    }
     
-    // Complete task
+    // Task complete
     CompleteTask(task);
     
-    animator.SetTrigger("Trigger_Stop");
-    agent.isStopped = false;
+    isBusy = false;
     currentTask = null;
     
     // Wait for next task with timer
     isWaitingForNextTask = true;
     taskTimer = 0f;
+}
+
+private IEnumerator ExecuteAction(EmployeeAction action)
+{
+    switch (action.actionType)
+    {
+        case ActionType.WalkTo:
+            if (action.targetLocation != null)
+                yield return StartCoroutine(MoveRoutine(action.targetLocation.position));
+            break;
+            
+        case ActionType.RunTo:
+            if (action.targetLocation != null)
+                yield return StartCoroutine(RunRoutine(action.targetLocation.position));
+            break;
+            
+        case ActionType.Sit:
+            if (action.chairTransform != null)
+                yield return StartCoroutine(SitRoutine(action.chairTransform));
+            break;
+            
+        case ActionType.StandUp:
+            yield return StartCoroutine(StandUpRoutine());
+            break;
+            
+        case ActionType.PlayAnimation:
+            yield return StartCoroutine(AnimationRoutine(action.animationTrigger, action.animationDuration));
+            break;
+            
+        case ActionType.Wait:
+            yield return new WaitForSeconds(action.waitDuration);
+            break;
+            
+        case ActionType.LookAt:
+            if (action.lookAtTarget != null)
+                yield return StartCoroutine(LookAtRoutine(action.lookAtTarget));
+            break;
+    }
+}
+
+private IEnumerator LookAtRoutine(Transform target)
+{
+    Vector3 direction = (target.position - transform.position);
+    direction.y = 0;
+    
+    if (direction.magnitude > 0.1f)
+    {
+        Quaternion lookRot = Quaternion.LookRotation(direction);
+        
+        float time = 0;
+        while (time < 0.5f)
+        {
+            transform.rotation = Quaternion.Slerp(transform.rotation, lookRot, time * 4f);
+            time += Time.deltaTime;
+            yield return null;
+        }
+    }
 }
 
 private void CompleteTask(TaskData task)

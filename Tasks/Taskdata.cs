@@ -1,4 +1,5 @@
 using UnityEngine;
+using System.Collections.Generic; // ADD THIS AT TOP
 
 public enum EvidenceType { None, Photo, Audio, Temperature, Logs, Artifact }
 
@@ -8,16 +9,13 @@ public class TaskData : ScriptableObject
     public string taskName;
     [TextArea] public string description;
     
-    [Header("Mechanics")]
-    public bool isDarkTask;       // If true, increases Spirit Power
-    public float duration = 3f;   // How long it takes to do
-    public float spiritPowerGain = 5f; 
-    
-    [Header("Assignment")]
-public Vector3 taskLocation; // Where employee needs to go
-public EmployeeController assignedEmployee; // Set in Inspector or at runtime
+[Header("Mechanics")]
+public bool isDarkTask;       
+public float spiritPowerGain = 5f; 
 
-    
-    [Header("Rewards")]
-    public EvidenceType revealsEvidence; 
+[Header("Action Sequence")]
+public List<EmployeeAction> actionSequence = new List<EmployeeAction>();
+
+[Header("Rewards")]
+public EvidenceType revealsEvidence;
 }
