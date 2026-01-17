@@ -1,4 +1,5 @@
 using UnityEngine;
+using System.Collections.Generic; // ADD THIS LINE
 
 public enum GamePhase { Working, Investigating, Convincing, Ending }
 
@@ -6,6 +7,11 @@ public class GameManager : MonoBehaviour
 {
     public static GameManager Instance;
     public GamePhase CurrentPhase;
+
+[Header("Employee References")]
+public List<EmployeeController> allEmployees; // Assign in Inspector
+
+
 
     private void Awake()
     {
@@ -15,6 +21,14 @@ public class GameManager : MonoBehaviour
         CurrentPhase = GamePhase.Working;
     }
 
+private void Start()
+{
+    // Start all employees on their first task
+    foreach (EmployeeController employee in allEmployees)
+    {
+        employee.StartNextTask();
+    }
+}
     private void OnEnable()
     {
         GameEvents.OnMidnightReached += HandleMidnight;

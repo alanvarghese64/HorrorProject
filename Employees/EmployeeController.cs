@@ -15,6 +15,14 @@ public class EmployeeController : MonoBehaviour
     public float walkSpeed = 1.5f;
     public float runSpeed = 3.5f;
 
+    [Header("Task System")]
+public int currentTaskIndex = 0;
+private float taskTimer = 0f;
+private bool isWaitingForNextTask = false;
+public TaskData currentTask;
+public bool isConvinced = false;
+
+
     // References
     private NavMeshAgent agent;
     private Animator animator;
@@ -32,28 +40,32 @@ public class EmployeeController : MonoBehaviour
         agent.updateRotation = true; 
     }
 
-    private void Update()
+private void Update()
+{
+    // 1. ANIMATION LOGIC (keep existing)
+    bool isMoving = agent.velocity.magnitude > 0.1f;
+    animator.SetBool("IsWalking", isMoving);
+
+    // 2. ACTION SYSTEM (keep existing)
+    if (!isBusy && actionQueue.Count > 0)
     {
-    // OLD LOGIC (Deleted):
-        // float currentSpeed = agent.velocity.magnitude;
-        // animator.SetFloat("Speed", currentSpeed, 0.1f, Time.deltaTime);
-
-        // NEW LOGIC (Explicit States):
-        // Check if we are moving significantly
-        bool isMoving = agent.velocity.magnitude > 0.1f;
+        StartCoroutine(ProcessNextAction());
+    }
+    
+    // 3. NEW: Task timing system (add this)
+    if (isWaitingForNextTask && !isConvinced)
+    {
+        taskTimer += Time.deltaTime;
         
-        // Update the Animator Bool
-        animator.SetBool("IsWalking", isMoving);
-        
-        // If you want running logic later, you would set IsRunning here based on agent.speed
-        // Example: animator.SetBool("IsRunning", isMoving && agent.speed > 3f);
-
-        // 2. ACTION SYSTEM
-        if (!isBusy && actionQueue.Count > 0)
+        if (taskTimer >= data.timeBetweenTasks)
         {
-            StartCoroutine(ProcessNextAction());
+            taskTimer = 0f;
+            isWaitingForNextTask = false;
+            StartNextTask();
         }
     }
+}
+
 
     private IEnumerator ProcessNextAction()
     {
@@ -196,5 +208,60 @@ public class EmployeeController : MonoBehaviour
         animator.SetBool("IsRunning", false);
         agent.speed = walkSpeed; // Reset to walk speed
     }
+
+    public void StartNextTask()
+{
+    if (data.assignedTaskSequence == null || data.assignedTaskSequence.Count == 0)
+        return;
+        
+    if (isConvinced)
+        return; // Convinced employees stop working
+    
+    if (currentTaskIndex >= data.assignedTaskSequence.Count)
+    {
+        // Loop back to start or stop
+        currentTaskIndex = 0; // Or just return to stop
+    }
+    
+    currentTask = data.assignedTaskSequence[currentTaskIndex];
+    currentTaskIndex++;
+    
+    // Go to task location and execute
+    GoToLocation(currentTask.taskLocation);
+    actionQueue.Enqueue(PerformTaskRoutine(currentTask));
+}
+
+private IEnumerator PerformTaskRoutine(TaskData task)
+{
+    agent.isStopped = true;
+    animator.SetTrigger("Trigger_Work");
+    
+    yield return new WaitForSeconds(task.duration);
+    
+    // Complete task
+    CompleteTask(task);
+    
+    animator.SetTrigger("Trigger_Stop");
+    agent.isStopped = false;
+    currentTask = null;
+    
+    // Wait for next task with timer
+    isWaitingForNextTask = true;
+    taskTimer = 0f;
+}
+
+private void CompleteTask(TaskData task)
+{
+    if (task.isDarkTask)
+    {
+        SpiritManager.Instance.AddPower(task.spiritPowerGain);
+        GameEvents.OnDarkTaskStarted?.Invoke(task);
+    }
+    else
+    {
+        GameEvents.OnTaskCompleted?.Invoke(task);
+    }
+}
+
 
 }

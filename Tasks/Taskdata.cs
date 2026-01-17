@@ -13,6 +13,11 @@ public class TaskData : ScriptableObject
     public float duration = 3f;   // How long it takes to do
     public float spiritPowerGain = 5f; 
     
+    [Header("Assignment")]
+public Vector3 taskLocation; // Where employee needs to go
+public EmployeeController assignedEmployee; // Set in Inspector or at runtime
+
+    
     [Header("Rewards")]
     public EvidenceType revealsEvidence; 
 }

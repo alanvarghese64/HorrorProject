@@ -1,4 +1,5 @@
 using UnityEngine;
+using System.Collections.Generic;
 
 public enum BeliefType { Rational, Superstitious, Visual, Authority, Experiential, Skeptic }
 
@@ -14,4 +15,13 @@ public class EmployeeData : ScriptableObject
     [Header("Dialogues")]
     [TextArea] public string introDialogue;
     [TextArea] public string convincedDialogue;
+    
+    [Header("Task Assignment")]
+    public List<TaskData> assignedTaskSequence;
+    public float timeBetweenTasks = 30f;
+    
+    [Header("Conviction System")]  // ADD THIS ENTIRE SECTION
+    public List<EvidenceType> preferredEvidenceTypes;
+    public float currentConviction = 0f;
+    public float convictionThreshold = 100f;
 }
