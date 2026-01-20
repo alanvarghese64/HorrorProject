@@ -2,11 +2,19 @@ using UnityEngine;
 
 public class TimeManager : MonoBehaviour
 {
+    public static TimeManager Instance; // ADD THIS
+    
     [Header("Settings")]
-    [Range(0, 24)] public float currentTime = 9f; // Start at 9 AM
-    public float timeScale = 1f; // 1 real sec = 1 game minute? Adjust as needed.
+    [Range(0, 24)] public float currentTime = 9f;
+    public float timeScale = 1f;
     
     private bool midnightTriggered = false;
+    
+    private void Awake() // ADD THIS METHOD
+    {
+        if (Instance == null) Instance = this;
+    }
+
 
     void Update()
     {

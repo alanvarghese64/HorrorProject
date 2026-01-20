@@ -93,10 +93,11 @@ private void Update()
         isBusy = true; 
         StartCoroutine(PanicRoutine(duration));
     }
-     public void SitOnChair(Transform chairTransform)
-    {
-        actionQueue.Enqueue(SitRoutine(chairTransform));
-    }
+    public void SitOnChair(Transform chairTransform)
+{
+    actionQueue.Enqueue(SitRoutine(chairTransform.position, chairTransform.forward));
+}
+
 
     public void StandUpFromChair()
     {
@@ -126,41 +127,40 @@ private void Update()
         agent.isStopped = false;
     }
 
-    private IEnumerator SitRoutine(Transform chair)
+  private IEnumerator SitRoutine(Vector3 chairPosition, Vector3 chairForward)
+{
+    // Walk to the chair
+    agent.speed = walkSpeed;
+    agent.SetDestination(chairPosition);
+    yield return null;
+    
+    while (agent.pathPending || agent.remainingDistance > agent.stoppingDistance)
     {
-        // 1. Walk to the chair
-        agent.speed = walkSpeed;
-        agent.SetDestination(chair.position);
         yield return null;
-
-        while (agent.pathPending || agent.remainingDistance > agent.stoppingDistance)
-        {
-            yield return null;
-        }
-
-        // 2. Align to face the chair (important for natural sitting)
-        Vector3 direction = chair.forward; // Chair's forward is where he should face
-        direction.y = 0;
-        Quaternion lookRot = Quaternion.LookRotation(direction);
-
-        float time = 0;
-        while (time < 0.5f)
-        {
-            transform.rotation = Quaternion.Slerp(transform.rotation, lookRot, time * 4f);
-            time += Time.deltaTime;
-            yield return null;
-        }
-
-        // 3. Stop the NavMeshAgent (crucial - otherwise he'll keep trying to stand on the exact chair position)
-        agent.isStopped = true;
-
-        // 4. Snap position slightly (optional - to perfectly align with chair seat)
-        transform.position = chair.position;
-
-        // 5. Play Sit Animation
-        animator.SetBool("IsSitting", true);
-        animator.SetTrigger("Trigger_Sit");
     }
+    
+    // Align to face the direction
+    Vector3 direction = chairForward;
+    direction.y = 0;
+    Quaternion lookRot = Quaternion.LookRotation(direction);
+    
+    float time = 0;
+    while (time < 0.5f)
+    {
+        transform.rotation = Quaternion.Slerp(transform.rotation, lookRot, time * 4f);
+        time += Time.deltaTime;
+        yield return null;
+    }
+    
+    agent.isStopped = true;
+    transform.position = chairPosition;
+    
+    animator.SetBool("IsSitting", true);
+    animator.SetTrigger("Trigger_Sit");
+    
+    yield return new WaitForSeconds(1f);
+}
+
 
     private IEnumerator StandUpRoutine()
     {
@@ -259,18 +259,15 @@ private IEnumerator ExecuteAction(EmployeeAction action)
     switch (action.actionType)
     {
         case ActionType.WalkTo:
-            if (action.targetLocation != null)
-                yield return StartCoroutine(MoveRoutine(action.targetLocation.position));
+            yield return StartCoroutine(MoveRoutine(action.targetPosition));
             break;
             
         case ActionType.RunTo:
-            if (action.targetLocation != null)
-                yield return StartCoroutine(RunRoutine(action.targetLocation.position));
+            yield return StartCoroutine(RunRoutine(action.targetPosition));
             break;
             
         case ActionType.Sit:
-            if (action.chairTransform != null)
-                yield return StartCoroutine(SitRoutine(action.chairTransform));
+            yield return StartCoroutine(SitRoutine(action.chairPosition, action.chairForward));
             break;
             
         case ActionType.StandUp:
@@ -286,15 +283,15 @@ private IEnumerator ExecuteAction(EmployeeAction action)
             break;
             
         case ActionType.LookAt:
-            if (action.lookAtTarget != null)
-                yield return StartCoroutine(LookAtRoutine(action.lookAtTarget));
+            yield return StartCoroutine(LookAtRoutine(action.lookAtPosition));
             break;
     }
 }
 
-private IEnumerator LookAtRoutine(Transform target)
+
+private IEnumerator LookAtRoutine(Vector3 targetPosition)
 {
-    Vector3 direction = (target.position - transform.position);
+    Vector3 direction = (targetPosition - transform.position);
     direction.y = 0;
     
     if (direction.magnitude > 0.1f)
@@ -310,6 +307,7 @@ private IEnumerator LookAtRoutine(Transform target)
         }
     }
 }
+
 
 private void CompleteTask(TaskData task)
 {
