@@ -1,42 +1,67 @@
 using UnityEngine;
-using UnityEngine.InputSystem;
+using TMPro; // for text
 
 public class PlayerInteraction : MonoBehaviour
 {
+    [Header("References")]
     public Transform cameraTransform;
+    public TextMeshProUGUI interactionText;
+
+    [Header("Settings")]
     public float interactDistance = 3f;
     public LayerMask interactLayer;
-    public InputActionReference interactAction;
 
-    // Cleaned up: Removed Equipment and Evidence references that were causing errors.
-    // Logic can be re-added here later.
+    private Interactable currentInteractable;
 
-    private void OnEnable()
+    void Update()
     {
-        if (interactAction != null && interactAction.action != null)
-            interactAction.action.Enable();
+        CheckForInteractable();
     }
 
-    private void OnDisable()
-    {
-        if (interactAction != null && interactAction.action != null)
-            interactAction.action.Disable();
-    }
+ void CheckForInteractable()
+{
+    if (cameraTransform == null) return;
 
-    private void Update()
+    // TEMP: no layermask
+    if (Physics.Raycast(cameraTransform.position,
+                        cameraTransform.forward,
+                        out RaycastHit hit,
+                        interactDistance)) // ← removed interactLayer
     {
-        if (interactAction != null && interactAction.action != null && interactAction.action.WasPressedThisFrame())
+        Debug.Log($"Raycast hit: {hit.collider.gameObject.name} on layer {LayerMask.LayerToName(hit.collider.gameObject.layer)}");
+
+        Interactable interactable = hit.collider.GetComponent<Interactable>();
+        if (interactable != null)
         {
-            PerformInteraction();
+            currentInteractable = interactable;
+            ShowPrompt(interactable.GetPrompt());
+            return;
+        }
+        else
+        {
+            Debug.Log("Hit object has NO Interactable component");
         }
     }
 
-    private void PerformInteraction()
+    currentInteractable = null;
+    HidePrompt();
+}
+
+
+    void ShowPrompt(string text)
     {
-        // Simple debug raycast to test interaction range
-        if (Physics.Raycast(cameraTransform.position, cameraTransform.forward, out RaycastHit hit, interactDistance, interactLayer))
-        {
-            Debug.Log($"Raycast hit: {hit.collider.name} (Interaction logic pending)");
-        }
+        if (interactionText == null) return;
+
+        interactionText.gameObject.SetActive(true);
+        interactionText.text = text;
     }
+
+    void HidePrompt()
+    {
+        if (interactionText == null) return;
+
+        interactionText.gameObject.SetActive(false);
+    }
+
+    
 }
