@@ -1,5 +1,5 @@
 using UnityEngine;
-using TMPro; // for text
+using TMPro;
 
 public class PlayerInteraction : MonoBehaviour
 {
@@ -18,37 +18,46 @@ public class PlayerInteraction : MonoBehaviour
         CheckForInteractable();
     }
 
- void CheckForInteractable()
-{
-    if (cameraTransform == null) return;
-
-    // TEMP: no layermask
-    if (Physics.Raycast(cameraTransform.position,
-                        cameraTransform.forward,
-                        out RaycastHit hit,
-                        interactDistance)) // ← removed interactLayer
+    void CheckForInteractable()
     {
-        Debug.Log($"Raycast hit: {hit.collider.gameObject.name} on layer {LayerMask.LayerToName(hit.collider.gameObject.layer)}");
+        if (cameraTransform == null) return;
 
-        Interactable interactable = hit.collider.GetComponent<Interactable>();
-        if (interactable != null)
+        if (Physics.Raycast(cameraTransform.position,
+                            cameraTransform.forward,
+                            out RaycastHit hit,
+                            interactDistance))
         {
-            currentInteractable = interactable;
-            ShowPrompt(interactable.GetPrompt());
-            return;
+            Debug.Log($"Raycast hit: {hit.collider.gameObject.name} on layer {LayerMask.LayerToName(hit.collider.gameObject.layer)}");
+
+            Interactable interactable = hit.collider.GetComponent<Interactable>();
+            if (interactable != null)
+            {
+                currentInteractable = interactable;
+                ShowPrompt(interactable.GetPrompt());
+                return;
+            }
+            else
+            {
+                Debug.Log("Hit object has NO Interactable component");
+            }
         }
-        else
-        {
-            Debug.Log("Hit object has NO Interactable component");
-        }
+
+        currentInteractable = null;
+        HidePrompt();
     }
 
-    currentInteractable = null;
-    HidePrompt();
-}
+    // Public methods for trigger-based interactions
+    public void ShowPromptFromTrigger(string text)
+    {
+        ShowPrompt(text);
+    }
 
+    public void HidePromptFromTrigger()
+    {
+        HidePrompt();
+    }
 
-    void ShowPrompt(string text)
+    public void ShowPrompt(string text)
     {
         if (interactionText == null) return;
 
@@ -56,12 +65,10 @@ public class PlayerInteraction : MonoBehaviour
         interactionText.text = text;
     }
 
-    void HidePrompt()
+    public void HidePrompt()
     {
         if (interactionText == null) return;
 
         interactionText.gameObject.SetActive(false);
     }
-
-    
 }
