@@ -5,20 +5,26 @@ using TMPro;
 
 public class DialogueController : MonoBehaviour
 {
+    [Header("Event Flag Settings")]
+    public string dialogueEventFlag = "NPC1_DialogueSeen"; // Unique flag name for this NPC
+    public string emailReadFlag = "NPC1_EmailRead"; // Flag when email is read
+
     [Header("Dialogue Settings")]
     [TextArea(3, 10)]
     public string[] dialogueLines;
-    public string characterName = "NPC"; // Name shown in dialogue box
+    [TextArea(3, 10)]
+    public string[] repeatDialogueLines; // Shown after email is unlocked but not read
+    public string characterName = "NPC";
     public float typingSpeed = 0.05f;
 
     [Header("Dialogue UI")]
-    public GameObject dialoguePanel; // The entire dialogue UI panel
-    public TextMeshProUGUI nameText; // Character name display
-    public TextMeshProUGUI dialogueText; // The dialogue text
-    public GameObject continueIndicator; // Arrow/icon showing "press to continue"
+    public GameObject dialoguePanel;
+    public TextMeshProUGUI nameText;
+    public TextMeshProUGUI dialogueText;
+    public GameObject continueIndicator;
 
     [Header("What Happens After Dialogue")]
-    public GameObject emailToUnlock;
+    public GameObject emailToUnlock; // The email button in inbox
     public EmailPanelController emailPanelController;
 
     [Header("Input")]
@@ -26,15 +32,18 @@ public class DialogueController : MonoBehaviour
 
     private bool playerInZone = false;
     private bool dialogueActive = false;
-    private bool dialogueComplete = false;
     private bool isTyping = false;
     private int currentLineIndex = 0;
+    private string[] currentDialogueSet; // Which dialogue to show
 
     void Start()
     {
-        // Hide dialogue panel at start
         if (dialoguePanel != null)
             dialoguePanel.SetActive(false);
+
+        // Initially hide the email button
+        if (emailToUnlock != null)
+            emailToUnlock.SetActive(false);
     }
 
     void OnEnable()
@@ -48,22 +57,19 @@ public class DialogueController : MonoBehaviour
 
         if (interactAction != null && interactAction.action.WasPressedThisFrame())
         {
-            if (!dialogueActive && !dialogueComplete)
+            if (!dialogueActive)
             {
-                // Start dialogue
                 StartDialogue();
             }
             else if (dialogueActive)
             {
                 if (isTyping)
                 {
-                    // Skip typing animation
                     StopAllCoroutines();
                     CompleteLineInstantly();
                 }
                 else
                 {
-                    // Show next line
                     ShowNextLine();
                 }
             }
@@ -75,36 +81,56 @@ public class DialogueController : MonoBehaviour
         dialogueActive = true;
         currentLineIndex = 0;
 
+        // Check which dialogue to show
+        bool dialogueSeen = GameEventManager.Instance != null && 
+                            GameEventManager.Instance.GetFlag(dialogueEventFlag);
+        bool emailRead = GameEventManager.Instance != null && 
+                         GameEventManager.Instance.GetFlag(emailReadFlag);
+
+        if (emailRead)
+        {
+            // Email was read, show a simple acknowledgment and don't repeat
+            ShowCompletionMessage();
+            return;
+        }
+        else if (dialogueSeen && repeatDialogueLines.Length > 0)
+        {
+            // Dialogue seen but email not read - show repeat dialogue
+            currentDialogueSet = repeatDialogueLines;
+            Debug.Log("Showing repeat dialogue (email not checked yet)");
+        }
+        else
+        {
+            // First time dialogue
+            currentDialogueSet = dialogueLines;
+            Debug.Log("Showing first-time dialogue");
+        }
+
         // Show dialogue panel
         if (dialoguePanel != null)
             dialoguePanel.SetActive(true);
 
-        // Set character name
         if (nameText != null)
             nameText.text = characterName;
 
-        // Hide interaction prompt
         if (InteractionUI.Instance != null)
             InteractionUI.Instance.HidePrompt();
 
-        // Show first line
         ShowNextLine();
     }
 
     void ShowNextLine()
     {
-        if (currentLineIndex < dialogueLines.Length)
+        if (currentLineIndex < currentDialogueSet.Length)
         {
-            // Hide continue indicator while typing
             if (continueIndicator != null)
                 continueIndicator.SetActive(false);
 
-            StartCoroutine(TypeLine(dialogueLines[currentLineIndex]));
+            StartCoroutine(TypeLine(currentDialogueSet[currentLineIndex]));
             currentLineIndex++;
         }
         else
         {
-            // Dialogue finished
             EndDialogue();
         }
     }
@@ -122,7 +148,6 @@ public class DialogueController : MonoBehaviour
 
         isTyping = false;
 
-        // Show continue indicator when line is complete
         if (continueIndicator != null)
             continueIndicator.SetActive(true);
     }
@@ -130,12 +155,11 @@ public class DialogueController : MonoBehaviour
     void CompleteLineInstantly()
     {
         isTyping = false;
-        if (currentLineIndex > 0 && currentLineIndex <= dialogueLines.Length)
+        if (currentLineIndex > 0 && currentLineIndex <= currentDialogueSet.Length)
         {
-            dialogueText.text = dialogueLines[currentLineIndex - 1];
+            dialogueText.text = currentDialogueSet[currentLineIndex - 1];
         }
 
-        // Show continue indicator
         if (continueIndicator != null)
             continueIndicator.SetActive(true);
     }
@@ -143,23 +167,55 @@ public class DialogueController : MonoBehaviour
     void EndDialogue()
     {
         dialogueActive = false;
-        dialogueComplete = true;
 
-        // Hide dialogue panel
         if (dialoguePanel != null)
             dialoguePanel.SetActive(false);
 
-        // Unlock new email
-        if (emailToUnlock != null && emailPanelController != null)
+        // Mark dialogue as seen
+        if (GameEventManager.Instance != null)
         {
-            emailPanelController.UnlockNewEmail(emailToUnlock);
-            Debug.Log("New email unlocked!");
+            GameEventManager.Instance.SetFlag(dialogueEventFlag, true);
         }
 
-        // Show completion message
+        // Check if this is first time - unlock email
+        bool emailAlreadyUnlocked = GameEventManager.Instance != null && 
+                                    GameEventManager.Instance.GetFlag(dialogueEventFlag + "_EmailUnlocked");
+
+        if (!emailAlreadyUnlocked && emailToUnlock != null && emailPanelController != null)
+        {
+            emailPanelController.UnlockNewEmail(emailToUnlock);
+            
+            // Mark email as unlocked
+            if (GameEventManager.Instance != null)
+            {
+                GameEventManager.Instance.SetFlag(dialogueEventFlag + "_EmailUnlocked", true);
+            }
+
+            Debug.Log("New email unlocked!");
+
+            if (InteractionUI.Instance != null)
+            {
+                InteractionUI.Instance.ShowPrompt("New email received!");
+                Invoke(nameof(HideInteractionPrompt), 2f);
+            }
+        }
+        else
+        {
+            // Email already unlocked, remind to check it
+            if (InteractionUI.Instance != null)
+            {
+                InteractionUI.Instance.ShowPrompt("Check your email at the laptop.");
+                Invoke(nameof(HideInteractionPrompt), 2f);
+            }
+        }
+    }
+
+    void ShowCompletionMessage()
+    {
+        // Email was read - just show a brief message
         if (InteractionUI.Instance != null)
         {
-            InteractionUI.Instance.ShowPrompt("New email received!");
+            InteractionUI.Instance.ShowPrompt("Thanks for checking the email!");
             Invoke(nameof(HideInteractionPrompt), 2f);
         }
     }
@@ -176,7 +232,7 @@ public class DialogueController : MonoBehaviour
         {
             playerInZone = true;
 
-            if (!dialogueComplete && !dialogueActive && InteractionUI.Instance != null)
+            if (!dialogueActive && InteractionUI.Instance != null)
             {
                 InteractionUI.Instance.ShowPrompt("Press E to Talk");
             }
@@ -189,7 +245,6 @@ public class DialogueController : MonoBehaviour
         {
             playerInZone = false;
 
-            // Force close dialogue if player walks away
             if (dialogueActive)
             {
                 StopAllCoroutines();
