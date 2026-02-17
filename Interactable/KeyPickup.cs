@@ -5,7 +5,12 @@ public class KeyPickup : MonoBehaviour
 {
     [Header("Pickup Settings")]
     public string itemName = "Key";
-    public DoorInteraction doorToUnlock; // Drag the Door GameObject here
+    public DoorInteraction doorToUnlock; // For unlocking doors directly
+
+    [Header("Code Digit Settings (Optional)")]
+    public bool isCodeDigit = false; // NEW: Check this for code digits
+    public string digitValue = "0"; // The digit (0-9)
+    public int digitPosition = 0; // Position in code (0-3)
 
     [Header("Input")]
     public InputActionReference interactAction;
@@ -16,8 +21,6 @@ public class KeyPickup : MonoBehaviour
     {
         if (interactAction != null) interactAction.action.Enable();
     }
-
-    // REMOVED OnDisable - don't disable the shared action!
 
     void Update()
     {
@@ -33,10 +36,22 @@ public class KeyPickup : MonoBehaviour
     {
         Debug.Log("Picked up " + itemName);
 
-        // Unlock door remotely
-        if (doorToUnlock != null)
+        // If it's a code digit, add to inventory
+        if (isCodeDigit)
         {
-            doorToUnlock.UnlockDoor();
+            if (PlayerInventory.Instance != null)
+            {
+                PlayerInventory.Instance.AddCodeDigit(digitPosition, digitValue);
+                Debug.Log($"Code Digit: Position {digitPosition} = {digitValue}");
+            }
+        }
+        else
+        {
+            // Regular key - unlock door
+            if (doorToUnlock != null)
+            {
+                doorToUnlock.UnlockDoor();
+            }
         }
 
         if (InteractionUI.Instance != null) InteractionUI.Instance.HidePrompt();
@@ -51,7 +66,8 @@ public class KeyPickup : MonoBehaviour
             
             if (InteractionUI.Instance != null)
             {
-                InteractionUI.Instance.ShowPrompt("Press E to Pick Up " + itemName);
+                string prompt = isCodeDigit ? $"Press E to Pick Up Digit" : $"Press E to Pick Up {itemName}";
+                InteractionUI.Instance.ShowPrompt(prompt);
             }
         }
     }
