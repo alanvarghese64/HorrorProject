@@ -81,6 +81,12 @@ public class DialogueController : MonoBehaviour
         dialogueActive = true;
         currentLineIndex = 0;
 
+         // NOTIFY UI MANAGER - NEW
+    if (UIManager.Instance != null)
+    {
+        UIManager.Instance.RegisterUIOpen();
+    }
+
         // Check which dialogue to show
         bool dialogueSeen = GameEventManager.Instance != null && 
                             GameEventManager.Instance.GetFlag(dialogueEventFlag);
@@ -171,6 +177,12 @@ public class DialogueController : MonoBehaviour
         if (dialoguePanel != null)
             dialoguePanel.SetActive(false);
 
+             // NOTIFY UI MANAGER - NEW
+    if (UIManager.Instance != null)
+    {
+        UIManager.Instance.RegisterUIOpen();
+    }
+
         // Mark dialogue as seen
         if (GameEventManager.Instance != null)
         {
@@ -251,6 +263,12 @@ public class DialogueController : MonoBehaviour
                 if (dialoguePanel != null)
                     dialoguePanel.SetActive(false);
                 dialogueActive = false;
+            }
+
+             // NOTIFY UI MANAGER IF DIALOGUE WAS FORCED CLOSED - NEW
+            if (UIManager.Instance != null)
+            {
+                UIManager.Instance.RegisterUIClose();
             }
 
             if (InteractionUI.Instance != null)

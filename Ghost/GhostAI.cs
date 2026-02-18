@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.AI;
+using System.Collections;
 
 [RequireComponent(typeof(NavMeshAgent))]
 [RequireComponent(typeof(Animator))]
@@ -14,15 +15,25 @@ public class GhostAI : MonoBehaviour
     public float stoppingDistance = 1.5f;
 
     [Header("Dynamic Detection")]
-    public float maxDetectionAngle = 60f; // Angle when far away
-    public float minDetectionAngle = 20f; // Angle when very close (harder to stop)
-    public float angleReductionDistance = 5f; // Distance at which angle starts shrinking
+    public float maxDetectionAngle = 60f;
+    public float minDetectionAngle = 20f;
+    public float angleReductionDistance = 5f;
 
     [Header("Aggression")]
-    public float forceChaseDistance = 15f; 
+    public float forceChaseDistance = 15f;
 
     [Header("Visibility Logic")]
-    public LayerMask viewBlockerLayer; // Ensure Player is UNCHECKED here
+    public LayerMask viewBlockerLayer;
+    
+    // ==================== NEW: JUMP ATTACK ====================
+    [Header("Jump Attack")]
+    public float jumpAttackRange = 2.5f;
+    public float jumpAttackCooldown = 5f;
+    public string jumpAttackAnimName = "JumpAttack";
+    
+    private bool canJumpAttack = true;
+    private bool isJumpAttacking = false;
+    // ==========================================================
     
     private float updateRate = 0.2f; 
     private float nextUpdateTime;
@@ -53,7 +64,6 @@ public class GhostAI : MonoBehaviour
         {
             isVisible = CheckVisibility();
             
-            // Force chase if too far
             float distanceToPlayer = Vector3.Distance(transform.position, player.position);
             if (distanceToPlayer > forceChaseDistance)
             {
@@ -72,6 +82,19 @@ public class GhostAI : MonoBehaviour
         }
         else
         {
+            // ==================== NEW: CHECK FOR JUMP ATTACK ====================
+            if (!isJumpAttacking)
+            {
+                float distanceToPlayer = Vector3.Distance(transform.position, player.position);
+                
+                if (distanceToPlayer <= jumpAttackRange && canJumpAttack)
+                {
+                    StartCoroutine(PerformJumpAttack());
+                    return;
+                }
+            }
+            // ====================================================================
+
             // RUN
             agent.isStopped = false;
             agent.SetDestination(player.position);
@@ -88,15 +111,10 @@ public class GhostAI : MonoBehaviour
         float distance = Vector3.Distance(transform.position, playerCamera.position);
         float angleToGhost = Vector3.Angle(playerCamera.forward, dirToGhost);
 
-        // --- NEW: DYNAMIC ANGLE CALCULATION ---
-        // Lerp angle based on distance. 
-        // If dist is 0, angle is min. If dist is >= angleReductionDistance, angle is max.
         float currentDetectionAngle = Mathf.Lerp(minDetectionAngle, maxDetectionAngle, distance / angleReductionDistance);
         
-        // Check against dynamic angle
         if (angleToGhost > currentDetectionAngle) return false;
 
-        // Linecast check (ignoring Player layer if configured correctly)
         Vector3 targetPoint = transform.position + Vector3.up * 1.5f; 
         if (Physics.Linecast(playerCamera.position, targetPoint, viewBlockerLayer))
         {
@@ -105,6 +123,42 @@ public class GhostAI : MonoBehaviour
 
         return true;
     }
+
+    // ==================== NEW: JUMP ATTACK COROUTINE ====================
+    IEnumerator PerformJumpAttack()
+    {
+        isJumpAttacking = true;
+        canJumpAttack = false;
+        
+        // Stop and face player
+        agent.isStopped = true;
+        agent.velocity = Vector3.zero;
+        
+        if (player != null)
+        {
+            Vector3 direction = (player.position - transform.position).normalized;
+            direction.y = 0;
+            transform.rotation = Quaternion.LookRotation(direction);
+        }
+        
+        // Play jump attack animation
+        if (animator != null)
+        {
+            animator.Play(jumpAttackAnimName);
+        }
+        
+        // Wait for animation to finish (adjust this time to match your animation length)
+        yield return new WaitForSeconds(1.5f);
+        
+        // Resume chasing
+        isJumpAttacking = false;
+        agent.isStopped = false;
+        
+        // Cooldown before next attack
+        yield return new WaitForSeconds(jumpAttackCooldown);
+        canJumpAttack = true;
+    }
+    // ====================================================================
 
     void OnDrawGizmosSelected()
     {
@@ -116,8 +170,12 @@ public class GhostAI : MonoBehaviour
         Gizmos.color = Color.red;
         if (player != null) Gizmos.DrawWireSphere(player.position, forceChaseDistance);
         
-        // Visualizing the reduction range
         Gizmos.color = Color.cyan;
         Gizmos.DrawWireSphere(transform.position, angleReductionDistance);
+        
+        // ==================== NEW: SHOW ATTACK RANGE ====================
+        Gizmos.color = Color.magenta;
+        Gizmos.DrawWireSphere(transform.position, jumpAttackRange);
+        // ================================================================
     }
 }

@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using TMPro;
 
 public class LaptopInteraction : MonoBehaviour
 {
@@ -8,13 +9,17 @@ public class LaptopInteraction : MonoBehaviour
     public int codeLength = 4;
 
     [Header("Camera Zoom")]
-    public Transform laptopScreenPosition; // Position camera here for screen view
+    public Transform laptopScreenPosition;
     public float zoomDuration = 0.5f;
-    public float zoomFieldOfView = 30f; // Narrower FOV = more zoomed in (default is 60)
+    public float zoomFieldOfView = 30f;
 
     [Header("UI Panels")]
-    public GameObject codePanel; // Login screen with buttons
-    public GameObject emailPanel; // Email inbox (shown after correct code)
+    public GameObject codePanel;
+    public GameObject emailPanel;
+    
+    [Header("Code Panel UI Elements")]
+    public TextMeshProUGUI codeDisplayText; // Main code display (large)
+    public TextMeshProUGUI messageText; // Feedback messages (small)
 
     [Header("What Happens When Unlocked")]
     public DoorInteraction doorToUnlock;
@@ -41,6 +46,7 @@ public class LaptopInteraction : MonoBehaviour
         
         if (codePanel != null) codePanel.SetActive(false);
         if (emailPanel != null) emailPanel.SetActive(false);
+        if (messageText != null) messageText.gameObject.SetActive(false);
     }
 
     void OnEnable()
@@ -69,19 +75,22 @@ public class LaptopInteraction : MonoBehaviour
     {
         isZoomedIn = true;
 
-        // Save original camera state
+        // NOTIFY UI MANAGER - NEW
+    if (UIManager.Instance != null)
+    {
+        UIManager.Instance.RegisterUIOpen();
+    }
+
         originalCameraParent = mainCamera.transform.parent;
         originalCameraPosition = mainCamera.transform.position;
         originalCameraRotation = mainCamera.transform.rotation;
         originalFieldOfView = mainCamera.fieldOfView;
 
-        // Disable player movement
         DisablePlayerMovement();
 
-        // Move camera to laptop screen
         if (laptopScreenPosition != null)
         {
-            mainCamera.transform.SetParent(null); // Detach from player
+            mainCamera.transform.SetParent(null);
             StartCoroutine(SmoothZoom(
                 laptopScreenPosition.position, 
                 laptopScreenPosition.rotation,
@@ -89,7 +98,6 @@ public class LaptopInteraction : MonoBehaviour
             ));
         }
 
-        // Show appropriate panel
         if (!isUnlocked)
         {
             if (codePanel != null) codePanel.SetActive(true);
@@ -103,7 +111,6 @@ public class LaptopInteraction : MonoBehaviour
                 InteractionUI.Instance.ShowPrompt("Press E to Exit");
         }
 
-        // Show cursor
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
     }
@@ -112,7 +119,6 @@ public class LaptopInteraction : MonoBehaviour
     {
         isZoomedIn = false;
 
-        // Restore camera
         mainCamera.transform.SetParent(originalCameraParent);
         StartCoroutine(SmoothZoom(
             originalCameraPosition, 
@@ -120,25 +126,24 @@ public class LaptopInteraction : MonoBehaviour
             originalFieldOfView
         ));
 
-        // Hide all panels
         if (codePanel != null) codePanel.SetActive(false);
         if (emailPanel != null) emailPanel.SetActive(false);
+         if (UIManager.Instance != null)
+    {
+        UIManager.Instance.RegisterUIClose();
+    }
 
-        // Enable player movement
         EnablePlayerMovement();
 
-        // Reset input (only if not unlocked)
         if (!isUnlocked)
         {
             currentInput = "";
             UpdateCodeDisplay();
         }
 
-        // Hide cursor
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
 
-        // Update prompt
         if (InteractionUI.Instance != null)
             InteractionUI.Instance.ShowPrompt("Press E to Use Laptop");
     }
@@ -153,7 +158,7 @@ public class LaptopInteraction : MonoBehaviour
         while (elapsed < zoomDuration)
         {
             elapsed += Time.deltaTime;
-            float t = Mathf.SmoothStep(0f, 1f, elapsed / zoomDuration); // Smooth ease in/out
+            float t = Mathf.SmoothStep(0f, 1f, elapsed / zoomDuration);
 
             mainCamera.transform.position = Vector3.Lerp(startPos, targetPos, t);
             mainCamera.transform.rotation = Quaternion.Slerp(startRot, targetRot, t);
@@ -167,7 +172,6 @@ public class LaptopInteraction : MonoBehaviour
         mainCamera.fieldOfView = targetFOV;
     }
 
-    // Called by UI number buttons
     public void OnNumberButtonPressed(string digit)
     {
         if (currentInput.Length < codeLength)
@@ -176,7 +180,6 @@ public class LaptopInteraction : MonoBehaviour
             Debug.Log("Current Code: " + currentInput);
             UpdateCodeDisplay();
 
-            // Auto-submit when full
             if (currentInput.Length == codeLength)
             {
                 Invoke(nameof(SubmitCode), 0.5f);
@@ -188,6 +191,7 @@ public class LaptopInteraction : MonoBehaviour
     {
         currentInput = "";
         UpdateCodeDisplay();
+        HideMessage();
         Debug.Log("Code cleared");
     }
 
@@ -197,9 +201,8 @@ public class LaptopInteraction : MonoBehaviour
         {
             Debug.Log("CODE CORRECT!");
             isUnlocked = true;
-            ShowMessage("ACCESS GRANTED");
+            ShowMessage("ACCESS GRANTED", Color.green);
 
-            // Trigger external events (door unlock, etc.)
             if (doorToUnlock != null)
             {
                 doorToUnlock.UnlockDoor();
@@ -210,100 +213,116 @@ public class LaptopInteraction : MonoBehaviour
                 objectToActivate.SetActive(true);
             }
 
-            // Transition to email panel after 1 second
-            Invoke(nameof(ShowEmailPanel), 1f);
+            Invoke(nameof(ShowEmailPanel), 1.5f);
         }
         else
         {
             Debug.Log($"CODE WRONG! Entered: {currentInput}");
-            ShowMessage("ACCESS DENIED");
+            ShowMessage("ACCESS DENIED", Color.red);
             currentInput = "";
-            UpdateCodeDisplay();
+            Invoke(nameof(ClearAfterError), 1.5f);
         }
+    }
+
+    void ClearAfterError()
+    {
+        UpdateCodeDisplay();
+        HideMessage();
     }
 
     void ShowEmailPanel()
     {
-        // Hide code panel, show email panel
         if (codePanel != null) codePanel.SetActive(false);
         if (emailPanel != null) emailPanel.SetActive(true);
     }
 
-    void UpdateCodeDisplay()
+  void UpdateCodeDisplay()
+{
+    if (codeDisplayText != null)
     {
-        var displayText = codePanel?.GetComponentInChildren<TMPro.TextMeshProUGUI>();
-        if (displayText != null)
+        // Define colors for each position
+        string[] colors = { "red", "#38C7EF", "green", "orange" };
+        
+        string display = "";
+        
+        for (int i = 0; i < codeLength; i++)
         {
-            string display = currentInput;
-            for (int i = currentInput.Length; i < codeLength; i++)
+            if (i < currentInput.Length)
             {
-                display += "_";
+                // Show entered digit in white (or keep colored)
+                display += $"<color={colors[i]}>{currentInput[i]}</color> ";
             }
-            displayText.text = display;
+            else
+            {
+                // Show underscore placeholder in color
+                display += $"<color={colors[i]}>_</color> ";
+            }
+        }
+        
+        codeDisplayText.text = display.TrimEnd();
+    }
+}
+
+
+    // NEW: Show small message
+    void ShowMessage(string message, Color color)
+    {
+        if (messageText != null)
+        {
+            messageText.text = message;
+            messageText.color = color;
+            messageText.gameObject.SetActive(true);
         }
     }
 
-    void ShowMessage(string message)
+    // NEW: Hide message
+    void HideMessage()
     {
-        var displayText = codePanel?.GetComponentInChildren<TMPro.TextMeshProUGUI>();
-        if (displayText != null)
+        if (messageText != null)
         {
-            displayText.text = message;
+            messageText.gameObject.SetActive(false);
         }
-        Debug.Log(message);
     }
 
     void DisablePlayerMovement()
-{
-    GameObject player = GameObject.FindGameObjectWithTag("Player");
-    
-    if (player != null)
     {
-        // Disable CharacterController
-        var characterController = player.GetComponent<CharacterController>();
-        if (characterController != null)
+        GameObject player = GameObject.FindGameObjectWithTag("Player");
+        
+        if (player != null)
         {
-            characterController.enabled = false;
-        }
+            var characterController = player.GetComponent<CharacterController>();
+            if (characterController != null)
+            {
+                characterController.enabled = false;
+            }
 
-        // Disable PlayerMovement script
-        var playerMovement = player.GetComponent<PlayerMovement>();
-        if (playerMovement != null)
-        {
-            playerMovement.enabled = false;
+            var playerMovement = player.GetComponent<PlayerMovement>();
+            if (playerMovement != null)
+            {
+                playerMovement.enabled = false;
+            }
         }
-
-        // If you have camera rotation script, disable it too
-        // var cameraLook = player.GetComponentInChildren<MouseLook>();
-        // if (cameraLook != null) cameraLook.enabled = false;
     }
-}
 
-void EnablePlayerMovement()
-{
-    GameObject player = GameObject.FindGameObjectWithTag("Player");
-    
-    if (player != null)
+    void EnablePlayerMovement()
     {
-        // Re-enable CharacterController
-        var characterController = player.GetComponent<CharacterController>();
-        if (characterController != null)
+        GameObject player = GameObject.FindGameObjectWithTag("Player");
+        
+        if (player != null)
         {
-            characterController.enabled = true;
-        }
+            var characterController = player.GetComponent<CharacterController>();
+            if (characterController != null)
+            {
+                characterController.enabled = true;
+            }
 
-        // Re-enable PlayerMovement script
-        var playerMovement = player.GetComponent<PlayerMovement>();
-        if (playerMovement != null)
-        {
-            playerMovement.enabled = true;
+            var playerMovement = player.GetComponent<PlayerMovement>();
+            if (playerMovement != null)
+            {
+                playerMovement.enabled = true;
+            }
         }
-
-        // Re-enable camera rotation if disabled
-        // var cameraLook = player.GetComponentInChildren<MouseLook>();
-        // if (cameraLook != null) cameraLook.enabled = true;
     }
-}
 
     void OnTriggerEnter(Collider other)
     {
@@ -324,7 +343,6 @@ void EnablePlayerMovement()
         {
             playerInZone = false;
 
-            // Force zoom out if player walks away
             if (isZoomedIn)
             {
                 ZoomOut();
