@@ -1,31 +1,40 @@
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using TMPro;
+using System.Linq; // Needed for sorting
 
 public class DialogueController : MonoBehaviour
 {
-    [Header("Event Flag Settings")]
-    public string dialogueEventFlag = "NPC1_DialogueSeen"; // Unique flag name for this NPC
-    public string emailReadFlag = "NPC1_EmailRead"; // Flag when email is read
+    [System.Serializable]
+    public class EventDialogue
+    {
+        [Tooltip("The event that must be TRUE for this dialogue to trigger")]
+        public string requiredEvent; 
+        
+        [TextArea(3, 10)]
+        public string[] dialogueLines;
+        
+        [Tooltip("If true, this dialogue will trigger even if the event hasn't happened yet (default fallback)")]
+        public bool isDefaultDialogue = false;
+    }
 
-    [Header("Dialogue Settings")]
-    [TextArea(3, 10)]
-    public string[] dialogueLines;
-    [TextArea(3, 10)]
-    public string[] repeatDialogueLines; // Shown after email is unlocked but not read
+    [Header("Data Source")]
+    public GameEventSO validEvents; // Reference to the list of events for dropdowns
+
+    [Header("Dialogue Configuration")]
     public string characterName = "NPC";
     public float typingSpeed = 0.05f;
+    
+    [Tooltip("List of dialogues and their required events. The system picks the LAST matching event in the list.")]
+    public List<EventDialogue> dialogues = new List<EventDialogue>();
 
     [Header("Dialogue UI")]
     public GameObject dialoguePanel;
     public TextMeshProUGUI nameText;
     public TextMeshProUGUI dialogueText;
     public GameObject continueIndicator;
-
-    [Header("What Happens After Dialogue")]
-    public GameObject emailToUnlock; // The email button in inbox
-    public EmailPanelController emailPanelController;
 
     [Header("Input")]
     public InputActionReference interactAction;
@@ -34,16 +43,11 @@ public class DialogueController : MonoBehaviour
     private bool dialogueActive = false;
     private bool isTyping = false;
     private int currentLineIndex = 0;
-    private string[] currentDialogueSet; // Which dialogue to show
+    private string[] currentDialogueLines; // The specific lines currently being shown
 
     void Start()
     {
-        if (dialoguePanel != null)
-            dialoguePanel.SetActive(false);
-
-        // Initially hide the email button
-        if (emailToUnlock != null)
-            emailToUnlock.SetActive(false);
+        if (dialoguePanel != null) dialoguePanel.SetActive(false);
     }
 
     void OnEnable()
@@ -61,7 +65,7 @@ public class DialogueController : MonoBehaviour
             {
                 StartDialogue();
             }
-            else if (dialogueActive)
+            else
             {
                 if (isTyping)
                 {
@@ -81,58 +85,56 @@ public class DialogueController : MonoBehaviour
         dialogueActive = true;
         currentLineIndex = 0;
 
-         // NOTIFY UI MANAGER - NEW
-    if (UIManager.Instance != null)
-    {
-        UIManager.Instance.RegisterUIOpen();
-    }
+        if (UIManager.Instance != null) UIManager.Instance.RegisterUIOpen();
 
-        // Check which dialogue to show
-        bool dialogueSeen = GameEventManager.Instance != null && 
-                            GameEventManager.Instance.GetFlag(dialogueEventFlag);
-        bool emailRead = GameEventManager.Instance != null && 
-                         GameEventManager.Instance.GetFlag(emailReadFlag);
+        // --- CORE LOGIC CHANGE: Select Dialogue based on Events ---
+        currentDialogueLines = GetBestDialogue();
 
-        if (emailRead)
+        if (currentDialogueLines == null || currentDialogueLines.Length == 0)
         {
-            // Email was read, show a simple acknowledgment and don't repeat
-            ShowCompletionMessage();
+            Debug.LogWarning("No valid dialogue found for current state.");
+            EndDialogue();
             return;
         }
-        else if (dialogueSeen && repeatDialogueLines.Length > 0)
-        {
-            // Dialogue seen but email not read - show repeat dialogue
-            currentDialogueSet = repeatDialogueLines;
-            Debug.Log("Showing repeat dialogue (email not checked yet)");
-        }
-        else
-        {
-            // First time dialogue
-            currentDialogueSet = dialogueLines;
-            Debug.Log("Showing first-time dialogue");
-        }
 
-        // Show dialogue panel
-        if (dialoguePanel != null)
-            dialoguePanel.SetActive(true);
-
-        if (nameText != null)
-            nameText.text = characterName;
-
-        if (InteractionUI.Instance != null)
-            InteractionUI.Instance.HidePrompt();
+        // Setup UI
+        if (dialoguePanel != null) dialoguePanel.SetActive(true);
+        if (nameText != null) nameText.text = characterName;
+        if (InteractionUI.Instance != null) InteractionUI.Instance.HidePrompt();
 
         ShowNextLine();
     }
 
+    // Logic to find the most relevant dialogue
+    string[] GetBestDialogue()
+    {
+        // 1. Iterate through the list backwards to find the most recent/advanced event that is TRUE
+        for (int i = dialogues.Count - 1; i >= 0; i--)
+        {
+            var d = dialogues[i];
+            
+            // If it's a default dialogue, it's a candidate (lowest priority usually if at top of list)
+            if (d.isDefaultDialogue) return d.dialogueLines;
+
+            // Check if the event is set in GameEventManager
+            if (GameEventManager.Instance != null && !string.IsNullOrEmpty(d.requiredEvent))
+            {
+                if (GameEventManager.Instance.GetFlag(d.requiredEvent))
+                {
+                    return d.dialogueLines;
+                }
+            }
+        }
+        
+        return null; // Should ideally have a default setup
+    }
+
     void ShowNextLine()
     {
-        if (currentLineIndex < currentDialogueSet.Length)
+        if (currentLineIndex < currentDialogueLines.Length)
         {
-            if (continueIndicator != null)
-                continueIndicator.SetActive(false);
-
-            StartCoroutine(TypeLine(currentDialogueSet[currentLineIndex]));
+            if (continueIndicator != null) continueIndicator.SetActive(false);
+            StartCoroutine(TypeLine(currentDialogueLines[currentLineIndex]));
             currentLineIndex++;
         }
         else
@@ -145,97 +147,32 @@ public class DialogueController : MonoBehaviour
     {
         isTyping = true;
         dialogueText.text = "";
-
         foreach (char letter in line.ToCharArray())
         {
             dialogueText.text += letter;
             yield return new WaitForSeconds(typingSpeed);
         }
-
         isTyping = false;
-
-        if (continueIndicator != null)
-            continueIndicator.SetActive(true);
+        if (continueIndicator != null) continueIndicator.SetActive(true);
     }
 
     void CompleteLineInstantly()
     {
         isTyping = false;
-        if (currentLineIndex > 0 && currentLineIndex <= currentDialogueSet.Length)
+        if (currentLineIndex > 0 && currentLineIndex <= currentDialogueLines.Length)
         {
-            dialogueText.text = currentDialogueSet[currentLineIndex - 1];
+            dialogueText.text = currentDialogueLines[currentLineIndex - 1];
         }
-
-        if (continueIndicator != null)
-            continueIndicator.SetActive(true);
+        if (continueIndicator != null) continueIndicator.SetActive(true);
     }
 
     void EndDialogue()
     {
         dialogueActive = false;
-
-        if (dialoguePanel != null)
-            dialoguePanel.SetActive(false);
-
-             // NOTIFY UI MANAGER - NEW
-    if (UIManager.Instance != null)
-    {
-        UIManager.Instance.RegisterUIOpen();
-    }
-
-        // Mark dialogue as seen
-        if (GameEventManager.Instance != null)
-        {
-            GameEventManager.Instance.SetFlag(dialogueEventFlag, true);
-        }
-
-        // Check if this is first time - unlock email
-        bool emailAlreadyUnlocked = GameEventManager.Instance != null && 
-                                    GameEventManager.Instance.GetFlag(dialogueEventFlag + "_EmailUnlocked");
-
-        if (!emailAlreadyUnlocked && emailToUnlock != null && emailPanelController != null)
-        {
-            emailPanelController.UnlockNewEmail(emailToUnlock);
-            
-            // Mark email as unlocked
-            if (GameEventManager.Instance != null)
-            {
-                GameEventManager.Instance.SetFlag(dialogueEventFlag + "_EmailUnlocked", true);
-            }
-
-            Debug.Log("New email unlocked!");
-
-            if (InteractionUI.Instance != null)
-            {
-                InteractionUI.Instance.ShowPrompt("New email received!");
-                Invoke(nameof(HideInteractionPrompt), 2f);
-            }
-        }
-        else
-        {
-            // Email already unlocked, remind to check it
-            if (InteractionUI.Instance != null)
-            {
-                InteractionUI.Instance.ShowPrompt("Check your email at the laptop.");
-                Invoke(nameof(HideInteractionPrompt), 2f);
-            }
-        }
-    }
-
-    void ShowCompletionMessage()
-    {
-        // Email was read - just show a brief message
-        if (InteractionUI.Instance != null)
-        {
-            InteractionUI.Instance.ShowPrompt("Thanks for checking the email!");
-            Invoke(nameof(HideInteractionPrompt), 2f);
-        }
-    }
-
-    void HideInteractionPrompt()
-    {
-        if (InteractionUI.Instance != null)
-            InteractionUI.Instance.HidePrompt();
+        if (dialoguePanel != null) dialoguePanel.SetActive(false);
+        if (UIManager.Instance != null) UIManager.Instance.RegisterUIClose();
+        
+        // Optional: Trigger any "OnDialogueEnd" events here if needed later
     }
 
     void OnTriggerEnter(Collider other)
@@ -243,11 +180,8 @@ public class DialogueController : MonoBehaviour
         if (other.CompareTag("Player"))
         {
             playerInZone = true;
-
             if (!dialogueActive && InteractionUI.Instance != null)
-            {
                 InteractionUI.Instance.ShowPrompt("Press E to Talk");
-            }
         }
     }
 
@@ -256,23 +190,14 @@ public class DialogueController : MonoBehaviour
         if (other.CompareTag("Player"))
         {
             playerInZone = false;
-
             if (dialogueActive)
             {
                 StopAllCoroutines();
-                if (dialoguePanel != null)
-                    dialoguePanel.SetActive(false);
+                if (dialoguePanel != null) dialoguePanel.SetActive(false);
                 dialogueActive = false;
+                if (UIManager.Instance != null) UIManager.Instance.RegisterUIClose();
             }
-
-             // NOTIFY UI MANAGER IF DIALOGUE WAS FORCED CLOSED - NEW
-            if (UIManager.Instance != null)
-            {
-                UIManager.Instance.RegisterUIClose();
-            }
-
-            if (InteractionUI.Instance != null)
-                InteractionUI.Instance.HidePrompt();
+            if (InteractionUI.Instance != null) InteractionUI.Instance.HidePrompt();
         }
     }
 }

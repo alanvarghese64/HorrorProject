@@ -5,6 +5,10 @@ public class GameEventManager : MonoBehaviour
 {
     public static GameEventManager Instance;
 
+    [Header("Configuration")]
+    [Tooltip("Drag your GameEventList ScriptableObject here")]
+    public GameEventSO eventList; 
+
     // Dictionary to track event flags
     private Dictionary<string, bool> eventFlags = new Dictionary<string, bool>();
 
@@ -14,6 +18,7 @@ public class GameEventManager : MonoBehaviour
         {
             Instance = this;
             DontDestroyOnLoad(gameObject);
+            InitializeFlags();
         }
         else
         {
@@ -21,7 +26,21 @@ public class GameEventManager : MonoBehaviour
         }
     }
 
-    // Set an event flag
+    // Initialize flags from the ScriptableObject to ensure they exist (default false)
+    void InitializeFlags()
+    {
+        if (eventList != null)
+        {
+            foreach (var evt in eventList.eventNames)
+            {
+                if (!eventFlags.ContainsKey(evt))
+                {
+                    eventFlags.Add(evt, false);
+                }
+            }
+        }
+    }
+
     public void SetFlag(string flagName, bool value)
     {
         if (eventFlags.ContainsKey(flagName))
@@ -35,7 +54,6 @@ public class GameEventManager : MonoBehaviour
         Debug.Log($"Event Flag Set: {flagName} = {value}");
     }
 
-    // Get an event flag (returns false if doesn't exist)
     public bool GetFlag(string flagName)
     {
         if (eventFlags.ContainsKey(flagName))
@@ -45,26 +63,23 @@ public class GameEventManager : MonoBehaviour
         return false;
     }
 
-    // Check if flag exists
     public bool HasFlag(string flagName)
     {
         return eventFlags.ContainsKey(flagName);
     }
 
-    // Clear a flag
     public void ClearFlag(string flagName)
     {
         if (eventFlags.ContainsKey(flagName))
         {
             eventFlags.Remove(flagName);
-            Debug.Log($"Event Flag Cleared: {flagName}");
         }
     }
 
-    // Reset all flags (useful for new game)
     public void ResetAllFlags()
     {
         eventFlags.Clear();
-        Debug.Log("All event flags cleared");
+        InitializeFlags(); // Re-add the defined events
+        Debug.Log("All event flags cleared and reset");
     }
 }
