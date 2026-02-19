@@ -18,6 +18,11 @@ public class DialogueController : MonoBehaviour
         
         [Tooltip("If true, this dialogue will trigger even if the event hasn't happened yet (default fallback)")]
         public bool isDefaultDialogue = false;
+
+        // NEW LOCATION: Flags are now specific to THIS dialogue entry
+        [Header("Triggers")]
+        [Tooltip("Flags to set TRUE when THIS specific dialogue ends")]
+        public List<string> flagsToSetOnEnd = new List<string>();
     }
 
     [Header("Data Source")]
@@ -44,6 +49,9 @@ public class DialogueController : MonoBehaviour
     private bool isTyping = false;
     private int currentLineIndex = 0;
     private string[] currentDialogueLines; // The specific lines currently being shown
+    
+    // NEW: We need to remember WHICH dialogue is playing to trigger its specific flags later
+    private EventDialogue currentDialogueData; 
 
     void Start()
     {
@@ -87,15 +95,17 @@ public class DialogueController : MonoBehaviour
 
         if (UIManager.Instance != null) UIManager.Instance.RegisterUIOpen();
 
-        // --- CORE LOGIC CHANGE: Select Dialogue based on Events ---
-        currentDialogueLines = GetBestDialogue();
+        // --- CORE LOGIC CHANGE: Get the whole EventDialogue object, not just lines ---
+        currentDialogueData = GetBestDialogueEntry();
 
-        if (currentDialogueLines == null || currentDialogueLines.Length == 0)
+        if (currentDialogueData == null)
         {
             Debug.LogWarning("No valid dialogue found for current state.");
             EndDialogue();
             return;
         }
+
+        currentDialogueLines = currentDialogueData.dialogueLines;
 
         // Setup UI
         if (dialoguePanel != null) dialoguePanel.SetActive(true);
@@ -105,8 +115,8 @@ public class DialogueController : MonoBehaviour
         ShowNextLine();
     }
 
-    // Logic to find the most relevant dialogue
-    string[] GetBestDialogue()
+    // Logic to find the most relevant dialogue OBJECT
+    EventDialogue GetBestDialogueEntry()
     {
         // 1. Iterate through the list backwards to find the most recent/advanced event that is TRUE
         for (int i = dialogues.Count - 1; i >= 0; i--)
@@ -114,14 +124,14 @@ public class DialogueController : MonoBehaviour
             var d = dialogues[i];
             
             // If it's a default dialogue, it's a candidate (lowest priority usually if at top of list)
-            if (d.isDefaultDialogue) return d.dialogueLines;
+            if (d.isDefaultDialogue) return d;
 
             // Check if the event is set in GameEventManager
             if (GameEventManager.Instance != null && !string.IsNullOrEmpty(d.requiredEvent))
             {
                 if (GameEventManager.Instance.GetFlag(d.requiredEvent))
                 {
-                    return d.dialogueLines;
+                    return d;
                 }
             }
         }
@@ -172,7 +182,18 @@ public class DialogueController : MonoBehaviour
         if (dialoguePanel != null) dialoguePanel.SetActive(false);
         if (UIManager.Instance != null) UIManager.Instance.RegisterUIClose();
         
-        // Optional: Trigger any "OnDialogueEnd" events here if needed later
+        // NEW: Trigger events specific to the dialogue that just finished
+        if (currentDialogueData != null && GameEventManager.Instance != null)
+        {
+            foreach (var flag in currentDialogueData.flagsToSetOnEnd)
+            {
+                if (!string.IsNullOrEmpty(flag))
+                {
+                    GameEventManager.Instance.SetFlag(flag, true);
+                    Debug.Log($"Dialogue ended, triggered flag: {flag}");
+                }
+            }
+        }
     }
 
     void OnTriggerEnter(Collider other)

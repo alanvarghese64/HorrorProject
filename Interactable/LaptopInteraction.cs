@@ -25,6 +25,10 @@ public class LaptopInteraction : MonoBehaviour
     public DoorInteraction doorToUnlock;
     public GameObject objectToActivate;
 
+    // Add this field with other [Header] sections
+[Header("Event Triggers")]
+public string eventOnUnlock = ""; // Event to trigger when laptop unlocked
+
     [Header("Input")]
     public InputActionReference interactAction;
 
@@ -195,34 +199,37 @@ public class LaptopInteraction : MonoBehaviour
         Debug.Log("Code cleared");
     }
 
-    void SubmitCode()
+   void SubmitCode()
+{
+    if (currentInput == correctCode)
     {
-        if (currentInput == correctCode)
+        Debug.Log("CODE CORRECT!");
+        isUnlocked = true;
+        ShowMessage("ACCESS GRANTED", Color.green);
+
+        if (doorToUnlock != null)
         {
-            Debug.Log("CODE CORRECT!");
-            isUnlocked = true;
-            ShowMessage("ACCESS GRANTED", Color.green);
-
-            if (doorToUnlock != null)
-            {
-                doorToUnlock.UnlockDoor();
-            }
-
-            if (objectToActivate != null)
-            {
-                objectToActivate.SetActive(true);
-            }
-
-            Invoke(nameof(ShowEmailPanel), 1.5f);
+            doorToUnlock.UnlockDoor();
         }
-        else
+
+        if (objectToActivate != null)
         {
-            Debug.Log($"CODE WRONG! Entered: {currentInput}");
-            ShowMessage("ACCESS DENIED", Color.red);
-            currentInput = "";
-            Invoke(nameof(ClearAfterError), 1.5f);
+            objectToActivate.SetActive(true);
         }
+        
+        // NEW: Trigger event
+        if (!string.IsNullOrEmpty(eventOnUnlock) && GameEventManager.Instance != null)
+        {
+            GameEventManager.Instance.TriggerEvent(eventOnUnlock);
+        }
+
+        Invoke(nameof(ShowEmailPanel), 1.5f);
     }
+    else
+    {
+        // ... rest of code
+    }
+}
 
     void ClearAfterError()
     {

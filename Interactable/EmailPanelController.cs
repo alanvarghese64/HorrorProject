@@ -1,20 +1,41 @@
 using UnityEngine;
+using System.Collections.Generic;
 
 public class EmailPanelController : MonoBehaviour
 {
+    [System.Serializable]
+    public class EmailEntry
+    {
+        [Tooltip("Unique ID for this email (e.g., NPC1_Email1)")]
+        public string id;
+        
+        [Tooltip("The button in the inbox list")]
+        public GameObject button;
+        
+        [Tooltip("The detail panel showing email content")]
+        public GameObject detailPanel;
+        
+        [Tooltip("Flag that must be TRUE for this email to appear in inbox")]
+        public string unlockFlag;
+        
+        [Tooltip("Flag set to TRUE when player opens/reads this email")]
+        public string readFlag;
+        
+        [Tooltip("Optional: Flag to set TRUE when email is opened (chains to next event)")]
+        public string onOpenFlag;
+    }
+
     [Header("UI References")]
     public GameObject emailListPanel;
     public GameObject contentAreaPanel;
     public Transform inboxContentParent; // The ScrollView → Content transform
     
-    [Header("Email Detail Panels")]
-    public GameObject email1DetailPanel;
-    public GameObject email2DetailPanel;
-    public GameObject email3DetailPanel;
-    public GameObject email4DetailPanel;
-    
     [Header("Default State")]
     public GameObject defaultMessagePanel;
+
+    [Header("Email System - Scalable")]
+    [Tooltip("List of all emails with their unlock/read/chain flags")]
+    public List<EmailEntry> emails = new List<EmailEntry>();
 
     void Start()
     {
@@ -22,6 +43,80 @@ public class EmailPanelController : MonoBehaviour
         if (contentAreaPanel != null) contentAreaPanel.SetActive(true);
         
         ShowDefaultMessage();
+        
+        // Check and unlock emails based on flags
+        RefreshInbox();
+    }
+
+    void OnEnable()
+    {
+        // Check again when the email panel is opened (in case events happened while laptop was closed)
+        RefreshInbox();
+    }
+
+    // Check all emails and show/hide buttons based on unlock flags
+    void RefreshInbox()
+    {
+        if (GameEventManager.Instance == null) return;
+
+        foreach (var email in emails)
+        {
+            if (email == null || email.button == null) continue;
+
+            // Check if this email should be unlocked
+            bool shouldUnlock = !string.IsNullOrEmpty(email.unlockFlag) && 
+                               GameEventManager.Instance.GetFlag(email.unlockFlag);
+
+            // Only unlock if not already active
+            if (shouldUnlock && !email.button.activeSelf)
+            {
+                email.button.SetActive(true);
+                MoveEmailToTop(email.button);
+                Debug.Log($"Email unlocked: {email.id} via flag: {email.unlockFlag}");
+            }
+        }
+    }
+
+    // Open a specific email by ID (called from button OnClick)
+    public void OpenEmail(string emailId)
+    {
+        HideAllDetailPanels();
+
+        var email = emails.Find(x => x != null && x.id == emailId);
+        
+        if (email == null)
+        {
+            Debug.LogWarning($"Email with ID '{emailId}' not found!");
+            return;
+        }
+
+        if (email.detailPanel == null)
+        {
+            Debug.LogWarning($"Email '{emailId}' has no detail panel assigned!");
+            return;
+        }
+
+        // Show the email content
+        email.detailPanel.SetActive(true);
+        Debug.Log($"Opened email: {emailId}");
+
+        // Set flags when email is opened
+        if (GameEventManager.Instance != null)
+        {
+            // Mark as read
+            if (!string.IsNullOrEmpty(email.readFlag))
+            {
+                GameEventManager.Instance.SetFlag(email.readFlag, true);
+                Debug.Log($"Email marked as read: {email.readFlag}");
+            }
+
+            // Trigger chain event (for next dialogue, etc.)
+            if (!string.IsNullOrEmpty(email.onOpenFlag))
+            {
+                GameEventManager.Instance.SetFlag(email.onOpenFlag, true);
+                Debug.Log($"Email triggered chain event: {email.onOpenFlag}");
+            }
+        }
     }
 
     void ShowDefaultMessage()
@@ -34,65 +129,17 @@ public class EmailPanelController : MonoBehaviour
 
     void HideAllDetailPanels()
     {
-        if (email1DetailPanel != null) email1DetailPanel.SetActive(false);
-        if (email2DetailPanel != null) email2DetailPanel.SetActive(false);
-        if (email3DetailPanel != null) email3DetailPanel.SetActive(false);
-        if (email4DetailPanel != null) email4DetailPanel.SetActive(false);
-        
-        if (defaultMessagePanel != null) defaultMessagePanel.SetActive(false);
-    }
-
-    public void ShowEmail1()
-    {
-        ShowEmail(email1DetailPanel, "Email1");
-    }
-
-    public void ShowEmail2()
-    {
-        ShowEmail(email2DetailPanel, "Email2");
-    }
-
-    public void ShowEmail3()
-    {
-        ShowEmail(email3DetailPanel, "Email3");
-    }
-
-    public void ShowEmail4()
-    {
-        ShowEmail(email4DetailPanel, "NPC1_EmailRead");
-    }
-
-    void ShowEmail(GameObject emailPanel, string readFlagName)
-    {
-        Debug.Log($"Showing email: {emailPanel?.name}");
-        HideAllDetailPanels();
-        
-        if (emailPanel != null) 
+        // Hide all email detail panels
+        foreach (var email in emails)
         {
-            emailPanel.SetActive(true);
-            
-            if (GameEventManager.Instance != null)
-            {
-                GameEventManager.Instance.SetFlag(readFlagName, true);
-                Debug.Log($"Email marked as read: {readFlagName}");
-            }
+            if (email != null && email.detailPanel != null)
+                email.detailPanel.SetActive(false);
         }
+        
+        if (defaultMessagePanel != null) 
+            defaultMessagePanel.SetActive(false);
     }
 
-    // Called by DialogueController to unlock emails
-    public void UnlockNewEmail(GameObject emailButton)
-    {
-        if (emailButton != null)
-        {
-            emailButton.SetActive(true);
-            Debug.Log($"Email unlocked: {emailButton.name}");
-            
-            // Move to top of inbox
-            MoveEmailToTop(emailButton);
-        }
-    }
-
-    // NEW: Move email button to top of list
     void MoveEmailToTop(GameObject emailButton)
     {
         if (inboxContentParent == null) return;
@@ -101,5 +148,28 @@ public class EmailPanelController : MonoBehaviour
         emailButton.transform.SetAsFirstSibling();
         
         Debug.Log($"{emailButton.name} moved to top of inbox");
+    }
+
+    // LEGACY SUPPORT: Keep old methods so existing buttons still work
+    // You can delete these once you've updated all button OnClick events to use OpenEmail(string)
+    
+    public void ShowEmail1()
+    {
+        OpenEmail("Email1");
+    }
+
+    public void ShowEmail2()
+    {
+        OpenEmail("Email2");
+    }
+
+    public void ShowEmail3()
+    {
+        OpenEmail("Email3");
+    }
+
+    public void ShowEmail4()
+    {
+        OpenEmail("Email4");
     }
 }
